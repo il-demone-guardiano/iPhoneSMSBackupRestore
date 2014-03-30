@@ -1,4 +1,5 @@
-#! -*- encoding: utf-8 -*-
+#!/usr/bin/python
+# -*- encoding: utf-8 -*-
 
 import copy
 import csv
@@ -8,6 +9,7 @@ import sqlite3
 import struct
 import sys
 import uuid
+import xml.dom.minidom as xml
 
 from Cocoa import NSArchiver
 from Cocoa import NSMutableAttributedString
@@ -16,7 +18,7 @@ from Cocoa import NSString
 apple_absolute_time_since = 978307200
 
 
-number_country = {'+86': 'cn'}
+number_country = {'+86': 'cn', '+39': 'it'}
 handle_chat_ids = {}
 
 
@@ -109,14 +111,28 @@ if __name__ == '__main__':
     if not (os.path.exists(sys.argv[1]) and os.path.exists(sys.argv[2])):
         print('File not found')
         sys.exit(1)
+
     f = open(sys.argv[2], 'rb')
-    reader = csv.reader(f)
+    if sys.argv[2][-4:] == '.csv':
+        reader = csv.reader(f)
+    if sys.argv[2][-4:] == '.xml':
+        dom = xml.parse(f)
+        if dom.documentElement.tagName != 'smses':
+            print('Invalid XML file')
+            sys.exit(1)
+
+        def _reader():
+            for n in dom.documentElement.getElementsByTagName('sms'):
+                yield (n.getAttribute('address'), n.getAttribute('type'), str(int(n.getAttribute('date'))/1000), n.getAttribute('body').encode('utf-8'))
+        reader = _reader()
+
     conn = sqlite3.connect(sys.argv[1])
     cursor = conn.cursor()
     # get the latest available number as the sender's number
     cursor.execute("SELECT account_id, account_login FROM chat "
                     "WHERE service_name = 'SMS' "
-                      "AND account_login LIKE 'P:%' "
+                      "AND (account_login LIKE 'P:%' "
+                      "OR  account_login = 'E:') "
                  "ORDER BY ROWID DESC "
                     "LIMIT 1")
     result = cursor.fetchone()
